@@ -6,6 +6,7 @@ import org.apache.commons.io.FileUtils;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -87,23 +88,26 @@ public class Worker {
     private void handlerAssignMapTask(Task task)  {
         try {
             String fileName = task.getInput();
-            List<KeyValue> keyValues = Wc.mapFunction(fileName);
-            Map<String, List<KeyValue>> map = keyValues.stream().collect(Collectors.groupingBy(x -> x.getKey()));
+            File file = new File(fileName);
+            if(!file.exists()){
+                throw new Exception("文件不存在");
+            }
+            List<String> lines = FileUtils.readLines(file, "UTF-8");
+            List<KeyValue> keyValues = Wc.mapFunction(lines);
+
             List<List<String>> reduceList = new ArrayList<>();
             for(int i = 0; i < task.getNReduce(); i++){
                 reduceList.add(new ArrayList<>());
             }
 
-            for (String key : map.keySet()) {
-                List<KeyValue> values = map.get(key);
-                String line = key + " " + values.stream().map(v -> v.getValue()).collect(Collectors.joining(","));
-
+            // 分成 R 份，这边可以执行 combiner 函数先合并好
+            for (KeyValue keyValue : keyValues) {
+                String line = keyValue.getKey() + " " + keyValue.getValue();
                 //切分方式是根据key做hash，分成 R 份
-                int index = Math.abs(key.hashCode() % task.getNReduce());
+                int index = Math.abs(keyValue.getKey().hashCode() % task.getNReduce());
                 List<String> subList = reduceList.get(index);
                 subList.add(line);
             }
-
 
             List<String> intermediates = new ArrayList<>();
             for (int i = 0; i < reduceList.size(); i++) {
@@ -130,19 +134,48 @@ public class Worker {
     private void handlerAssignReduceTask(Task task) {
 
         try {
+
+            // 读取
             List<String> fileNames = task.getIntermediates();
-            List<String> lines = new ArrayList<>();
+            List<KeyValue> keyValues = new ArrayList<>();
             for (String fileName : fileNames) {
-                Map<String, Integer> map = Wc.reduceFunction(fileName);
-                for (String key : map.keySet()) {
-                    String line = key + " " + map.get(key);
-                    lines.add(line);
+                File file = new File(fileName);
+                if(!file.exists()){
+                    throw new Exception("文件不存在");
+                }
+                List<String> lines = FileUtils.readLines(file, "UTF-8");
+                for (String line : lines) {
+                    String[] str = line.split(" ");
+                    keyValues.add(KeyValue.builder().key(str[0]).value(str[1]).build());
                 }
             }
 
+
+            // 按照 key 生序
+            keyValues.sort(new Comparator<KeyValue>() {
+                @Override
+                public int compare(KeyValue o1, KeyValue o2) {
+                    return o1.getKey().compareTo(o2.getKey());
+                }
+            });
+
+            List<String> outPutString = new ArrayList<>();
+            int i = 0;
+            while (i < keyValues.size()) {
+                int j = i + 1;
+                while (j < keyValues.size() && keyValues.get(i).getKey().equals(keyValues.get(j).getKey())){
+                    j++;
+                }
+                List<KeyValue> subList = keyValues.subList(i, j - 1);
+                outPutString.add(keyValues.get(i).getKey() + " " + Wc.reduceFunction(subList));
+
+                i = j;
+            }
+
+
             String reduceFileName = "/Users/xushu/MyGithub Project/mit6824/src/main/java/labs/lab1/mapreduce2/file/mr_reduce_out_taskId" + task.getTaskNumber() + this.selfAddress  + ".txt";
             File outFile = new File(reduceFileName);
-            FileUtils.writeLines(outFile, lines);
+            FileUtils.writeLines(outFile, outPutString);
 
             task.setOutput(reduceFileName);
 

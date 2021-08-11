@@ -13,16 +13,10 @@ import java.util.*;
  */
 public class Wc {
 
-    public static List<KeyValue> mapFunction(String inputfileName) throws Exception {
-        File file = new File(inputfileName);
-        if(!file.exists()){
-            throw new Exception("文件不存在");
-        }
-
+    public static List<KeyValue> mapFunction(List<String> lines)  {
         List<KeyValue> list = new ArrayList<>();
-        List<String> lines = FileUtils.readLines(file, "UTF-8");
         for (String line : lines) {
-            StringTokenizer tokenizer = new StringTokenizer(line, ",!' '.;()*--[]:\"\"?");
+            StringTokenizer tokenizer = new StringTokenizer(line, ",!' '.;()*--[]:\"\"?#$&!@");
             while (tokenizer.hasMoreTokens()){
                 list.add(KeyValue.builder()
                         .key(tokenizer.nextToken())
@@ -35,21 +29,7 @@ public class Wc {
     }
 
 
-    public static Map<String, Integer> reduceFunction(String mapOutputFileName) throws Exception {
-        File file = new File(mapOutputFileName);
-        if(!file.exists()){
-            throw new Exception("文件不存在");
-        }
-
-        Map<String, Integer> map = new HashMap<>();
-        List<String> lines = FileUtils.readLines(file, "UTF-8");
-        for (String line : lines) {
-            String[] str = line.split("\\s+");
-            String key = str[0];
-            String values = str[1];
-            map.put(key, map.getOrDefault(key, 0) + values.split(",").length);
-        }
-
-        return map;
+    public static int reduceFunction(List<KeyValue> keyValues)  {
+        return keyValues.size();
     }
 }
